@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>이차방정식 공룡 게임</title>
+    <style>
+        body { text-align: center; background-color: #f7f7f7; font-family: sans-serif; margin: 0; padding: 20px; user-select: none; }
+        #eq-box { font-size: 40px; font-weight: bold; margin: 15px; color: #2c3e50; height: 60px; }
+        #game-view { position: relative; width: 800px; height: 200px; margin: 0 auto; background: white; border: 4px solid #333; border-radius: 10px; overflow: hidden; }
+        canvas { display: block; background: #fff; }
+        #ui-text { position: absolute; top: 12px; right: 20px; text-align: right; font-weight: bold; color: #555; }
+        #over-view { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; z-index: 10; padding-top: 40px; box-sizing: border-box; }
+        #jump-btn { 
+            width: 200px; height: 70px; font-size: 28px; font-weight: bold; 
+            margin-top: 20px; background-color: #2ecc71; color: white; 
+            border: none; border-radius: 35px; cursor: pointer; 
+            box-shadow: 0 6px #27ae60; outline: none;
+        }
+        #jump-btn:active { box-shadow: 0 2px #27ae60; transform: translateY(4px); }
+        button.restart { padding: 10px 25px; font-size: 18px; cursor: pointer; background: #e67e22; color: white; border: none; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <div id="eq-box">준비 중...</div>
+
+    <div id="game-view">
+        <div id="ui-text">
+            Score: <span id="s-num">0</span><br>
+            Next: <span id="q-num">5</span> left
+        </div>
+        <canvas id="cvs" width="800" height="200"></canvas>
+        <div id="over-view">
+            <h1 style="color:#ff7675; margin:0;">GAME OVER</h1>
+            <p id="over-reason" style="margin:15px 0; font-size: 18px;"></p>
+            <button class="restart" onclick="location.reload()">다시 시작하기</button>
+        </div>
+    </div>
+
+    <button id="jump-btn">JUMP !</button>
+
+    <p style="color: #666; margin-top: 20px;">
+        <b>↑ 방향키 / 스페이스바 / 버튼으로 점프!</b><br>
+        정답(해)은 몸으로 막고, 오답은 피하세요!
+    </p>
+
+    <script>
+        // 캔버스 설정
+        var cvs = document.getElementById('cvs');
+        var ctx = cvs.getContext('2d');
+
+        // 게임 변수
+        var score = 0, isOver = false, frame = 0, obstacles = [], answers = [], passCount = 0, moveSpeed = 4;
+        var dino = { x: 50, y: 135, w: 50, h: 50, dy: 0, jump: -15, grav: 0.8, onGround: true };
+
+        // 공룡 그리기 함수
+        function drawDino(x, y) {
+            ctx.fillStyle = "#27ae60";
+            ctx.fillRect(x + 5, y + 15, 30, 25); // 몸통
+            ctx.fillRect(x + 20, y, 25, 20);      // 머리
+            ctx.fillRect(x + 35, y + 10, 12, 5);  // 입
+            ctx.fillRect(x + 10, y + 40, 8, 10);  // 다리1
+            ctx.fillRect(x + 22, y + 40, 8, 10);  // 다리2
+            ctx.fillStyle = "white"; ctx.fillRect(x + 38, y + 4, 5, 5); // 눈
+        }
+
+        // 퀴즈 생성 함수
+        function makeQuiz() {
+            var x1 = Math.floor(Math.random() * 11); // 0~10
+            var x2 = Math.floor(Math.random() * 9) - 4; // -4~4
+            answers = [x1, x2];
+
+            var eqText = "";
+            if (Math.random() < 0.6) {
+                // 인수분해 형태
+                var f = function(n) { 
+                    if(n === 0) return "x"; 
+                    return n > 0 ? "(x - " + n + ")" : "(x + " + Math.abs(n) + ")"; 
+                };
+                eqText = f(x1) + f(x2) + " = 0";
+            } else {
+                // 전개 형태
+                var b = -(x1 + x2);
+                var c = x1 * x2;
+                var bTxt = b !== 0 ? (b > 0 ? " + " : " - ") + (Math.abs(b) === 1 ? "" : Math.abs(b)) + "x" : "";
+                var cTxt = c === 0 ? "" : (c > 0 ? " + " + c : " - " + Math.abs(c));
+                eqText = "x²" + bTxt + cTxt + " = 0";
+            }
+            document.getElementById('eq-box').innerHTML = eqText;
+            passCount = 0;
+            document.getElementById('q-num').innerText = "5";
+        }
+
+        function doJump() {
+            if (dino.onGround && !isOver) {
+                dino.dy = dino.jump;
+                dino.onGround = false;
+            }
+        }
+
+        function gameOver(m) {
+            isOver = true;
+            document.getElementById('over-view').style.display = "block";
+            document.getElementById('over-reason').innerText = m;
+        }
+
+        function update() {
+            if (isOver) return;
+            
+            // 화면 지우기
+            ctx.clearRect(0, 0, 800, 200);
+            
+            // 바닥 그리기
+            ctx.strokeStyle = "#333";
+            ctx.beginPath(); ctx.moveTo(0, 185); ctx.lineTo(800, 185); ctx.stroke();
+
+            // 공룡 물리
+            dino.dy += dino.grav;
+            dino.y += dino.dy;
+            if (dino.y > 135) { dino.y = 135; dino.dy = 0; dino.onGround = true; }
+            drawDino(dino.x, dino.y);
+
+            // 장애물 생성
+            if (frame % 120 === 0) {
+                var isAns = Math.random() < 0.5;
+                var num = isAns ? answers[Math.floor(Math.random() * 2)] : Math.floor(Math.random() * 20) - 7;
+                obstacles.push({ x: 800, y: 145, n: num });
+            }
+
+            // 장애물 이동 및 처리
+            for (var i = obstacles.length - 1; i >= 0; i--) {
+                var o = obstacles[i];
+                o.x -= moveSpeed;
+
+                // 장애물 그리기 (roundRect 대신 일반 rect 사용)
+                ctx.fillStyle = "#ff7675";
+                ctx.fillRect(o.x, o.y, 40, 40);
+                ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
+                ctx.fillText(o.n, o.x + 20, o.y + 27);
+
+                // 충돌 검사
+                if (dino.x < o.x + 40 && dino.x + 45 > o.x && dino.y < o.y + 40 && dino.y + 45 > o.y) {
+                    if (answers.indexOf(o.n) !== -1) {
+                        score += 20;
+                        document.getElementById('s-num').innerText = score;
+                        obstacles.splice(i, 1);
+                        passCount++;
+                        document.getElementById('q-num').innerText = 5 - passCount;
+                    } else {
+                        gameOver(o.n + "은(는) 정답이 아닙니다!");
+                    }
+                } 
+                // 통과 검사
+                else if (o.x + 40 < 0) {
+                    if (answers.indexOf(o.n) !== -1) {
+                        gameOver("정답 " + o.n + "을(를) 놓쳤습니다!");
+                    } else {
+                        score += 10;
+                        document.getElementById('s-num').innerText = score;
+                        obstacles.splice(i, 1);
+                        passCount++;
+                        document.getElementById('q-num').innerText = 5 - passCount;
+                    }
+                }
+            }
+
+            if (passCount >= 5) {
+                makeQuiz();
+                moveSpeed += 0.2;
+            }
+
+            frame++;
+            requestAnimationFrame(update);
+        }
+
+        // 컨트롤 설정
+        window.onkeydown = function(e) { if (e.keyCode === 38 || e.keyCode === 32) doJump(); };
+        document.getElementById('jump-btn').onclick = function() { doJump(); };
+        document.getElementById('jump-btn').ontouchstart = function(e) { e.preventDefault(); doJump(); };
+
+        // 즉시 실행 시작
+        makeQuiz();
+        update();
+    </script>
+</body>
+</html>
